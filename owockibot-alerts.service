@@ -1,0 +1,25 @@
+[Unit]
+Description=Owockibot Price Alert Bot
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+User=root
+WorkingDirectory=/root/workspace/code/owockibot-price-alert
+ExecStart=/usr/bin/node bot.js
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=owockibot-alerts
+
+# Environment
+Environment=NODE_ENV=production
+
+# Security (optional hardening)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

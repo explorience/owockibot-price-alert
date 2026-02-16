@@ -1,0 +1,30 @@
+{
+  "name": "owockibot-price-alert",
+  "version": "1.0.0",
+  "description": "Price alert bot for owockibot token - monitors DexScreener and posts X alerts for 10%+ moves",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node bot.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "owockibot",
+    "price-alert",
+    "crypto",
+    "bot",
+    "dexscreener",
+    "twitter",
+    "postiz"
+  ],
+  "author": "HeenAI <tej@agentmail.to>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heen-ai/owockibot-price-alert.git"
+  }
+}
