@@ -13,13 +13,37 @@ const CONFIG = {
     CHECK_INTERVAL: 5 * 60 * 1000, // 5 minutes in milliseconds
     ALERT_THRESHOLD: 0.10, // 10% change
     TIME_WINDOW: 60 * 60 * 1000, // 1 hour in milliseconds
-    PRICE_HISTORY_FILE: path.join(__dirname, 'price_history.json')
+    ALERT_COOLDOWN: 60 * 60 * 1000, // 1 hour minimum between alerts
+    PRICE_HISTORY_FILE: path.join(__dirname, 'price_history.json'),
+    LAST_ALERT_FILE: path.join(__dirname, 'last_alert.json')
 };
 
 class OwockibotPriceBot {
     constructor() {
         this.priceHistory = this.loadPriceHistory();
+        this.lastAlert = this.loadLastAlert();
         this.isRunning = false;
+    }
+
+    loadLastAlert() {
+        try {
+            if (fs.existsSync(CONFIG.LAST_ALERT_FILE)) {
+                return JSON.parse(fs.readFileSync(CONFIG.LAST_ALERT_FILE, 'utf8'));
+            }
+        } catch (error) {}
+        return { timestamp: 0, direction: null };
+    }
+
+    saveLastAlert(direction) {
+        const data = { timestamp: Date.now(), direction };
+        try {
+            fs.writeFileSync(CONFIG.LAST_ALERT_FILE, JSON.stringify(data));
+        } catch (error) {}
+        this.lastAlert = data;
+    }
+
+    isOnCooldown() {
+        return (Date.now() - this.lastAlert.timestamp) < CONFIG.ALERT_COOLDOWN;
     }
 
     loadPriceHistory() {
@@ -66,7 +90,8 @@ class OwockibotPriceBot {
                 pairAddress: bestPair.pairAddress,
                 dexId: bestPair.dexId,
                 volume24h: parseFloat(bestPair.volume?.h24 || 0),
-                liquidity: parseFloat(bestPair.liquidity?.usd || 0)
+                liquidity: parseFloat(bestPair.liquidity?.usd || 0),
+                marketCap: parseFloat(bestPair.marketCap || bestPair.fdv || 0)
             };
         } catch (error) {
             console.error('Error fetching price:', error.message);
@@ -106,7 +131,8 @@ class OwockibotPriceBot {
                 newPrice: currentPrice.price,
                 timespan,
                 volume24h: currentPrice.volume24h,
-                liquidity: currentPrice.liquidity
+                liquidity: currentPrice.liquidity,
+                marketCap: currentPrice.marketCap
             };
         }
 
@@ -115,13 +141,13 @@ class OwockibotPriceBot {
 
     formatPrice(price) {
         if (price < 0.000001) {
-            return price.toExponential(3);
+            return price.toExponential(6);
         } else if (price < 0.01) {
-            return price.toFixed(6);
+            return price.toFixed(9);
         } else if (price < 1) {
-            return price.toFixed(4);
+            return price.toFixed(7);
         } else {
-            return price.toFixed(2);
+            return price.toFixed(5);
         }
     }
 
@@ -140,15 +166,14 @@ class OwockibotPriceBot {
         const direction = alert.direction === 'UP' ? 'SURGE' : 'DROP';
         
         // Keep tweet under 280 chars and avoid apostrophes (Postiz quirk)
-        const tweet = `${emoji} OWOCKIBOT ALERT!
+        const tweet = `${emoji} $OWOCKI ALERT @owocki @owockibot
 
 ${direction}: ${alert.percentage.toFixed(1)}% in ${alert.timespan}min
 ${this.formatPrice(alert.oldPrice)} → ${this.formatPrice(alert.newPrice)}
 
+MCap: ${this.formatVolume(alert.marketCap)}
 24h Vol: ${this.formatVolume(alert.volume24h)}
-Liquidity: ${this.formatVolume(alert.liquidity)}
-
-#owockibot #DeFi #Base $OWOCKI`;
+Liquidity: ${this.formatVolume(alert.liquidity)}`;
 
         return tweet;
     }
@@ -224,8 +249,15 @@ Liquidity: ${this.formatVolume(alert.liquidity)}
         // Check for alerts
         const alert = this.checkForAlerts(currentPrice);
         if (alert) {
-            console.log(`ALERT: ${alert.direction} ${alert.percentage.toFixed(1)}% in ${alert.timespan} minutes!`);
-            await this.postAlert(alert);
+            if (this.isOnCooldown()) {
+                console.log(`ALERT suppressed (cooldown): ${alert.direction} ${alert.percentage.toFixed(1)}% - last alert ${Math.round((Date.now() - this.lastAlert.timestamp) / 60000)}min ago`);
+            } else {
+                console.log(`ALERT: ${alert.direction} ${alert.percentage.toFixed(1)}% in ${alert.timespan} minutes!`);
+                const posted = await this.postAlert(alert);
+                if (posted) {
+                    this.saveLastAlert(alert.direction);
+                }
+            }
         }
 
         // Save history
